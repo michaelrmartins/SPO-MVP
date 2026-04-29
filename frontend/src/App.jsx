@@ -238,16 +238,16 @@ function Collection({ activeSession, setActiveSession }) {
     }
   }, [toastMsg]);
 
-  // Auto-hide Student Photo Hero after 20 seconds of inactivity
+  // Auto-hide Student Photo Hero after 15 seconds of inactivity
   useEffect(() => {
     let timer;
-    if (currentStudent && attendances.length > 0) {
+    if (currentStudent) {
       timer = setTimeout(() => {
         setCurrentStudent(null);
-      }, 20000);
+      }, 15000);
     }
     return () => clearTimeout(timer);
-  }, [currentStudent, attendances]);
+  }, [currentStudent]);
 
 
 
