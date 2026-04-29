@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: presence-db
+    environment:
+      POSTGRES_USER: presence_user
+      POSTGRES_PASSWORD: presence_password
+      POSTGRES_DB: presence_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: presence-backend
+    command: npm run dev
+    environment:
+      - PORT=3000
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=presence_user
+      - DB_PASS=presence_password
+      - DB_NAME=presence_db
+      - SITUATOR_URL=https://network-services-middleware-situator.intranet.local/api/v1
+      - SITUATOR_USER=${SITUATOR_USER}
+      - SITUATOR_PASS=${SITUATOR_PASS}
+      - LYCEUM_URL=http://192.168.55.9:4000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - db
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: presence-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  pgdata:
