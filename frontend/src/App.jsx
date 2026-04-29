@@ -178,6 +178,7 @@ function Collection({ activeSession, setActiveSession }) {
   
   const rfidInputRef = useRef(null);
   const bufferRef = useRef('');
+  const latestAttendanceIdRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -194,12 +195,13 @@ function Collection({ activeSession, setActiveSession }) {
         if (isSubscribed) {
           setAttendances(res.data);
           if (res.data.length > 0) {
-            setCurrentStudent(prev => {
-              if (!prev || prev.id !== res.data[0].id) {
-                return res.data[0];
-              }
-              return prev;
-            });
+            const latestId = res.data[0].id;
+            if (latestAttendanceIdRef.current !== latestId) {
+              latestAttendanceIdRef.current = latestId;
+              setCurrentStudent(res.data[0]);
+            }
+          } else {
+            latestAttendanceIdRef.current = null;
           }
         }
       } catch (err) {
@@ -260,6 +262,7 @@ function Collection({ activeSession, setActiveSession }) {
         input_type: type
       });
       const newAttendance = res.data.attendance;
+      latestAttendanceIdRef.current = newAttendance.id;
       setCurrentStudent(newAttendance);
       setAttendances(prev => [newAttendance, ...prev]);
     } catch (err) {
