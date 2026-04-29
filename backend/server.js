@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const axios = require('axios');
+const https = require('https');
 
 const app = express();
 app.use(cors());
@@ -31,11 +32,15 @@ async function getSituatorPerson(input, type) {
   try {
     const auth = Buffer.from(`${process.env.SITUATOR_USER}:${process.env.SITUATOR_PASS}`).toString('base64');
     const endpointPath = type === 'RFID' ? `/person/card/${input}` : `/person/document/${input}`;
-    
-    // SITUATOR_URL = https://network-services-middleware-situator.intranet.local/api/v1
+
+    // SITUATOR_URL = http://network-services-middleware-situator.intranet.local/api/v1
+    const agent = new https.Agent({
+      rejectUnauthorized: false
+    });
     const response = await axios.get(`${process.env.SITUATOR_URL}${endpointPath}`, {
       headers: { 'Authorization': `Basic ${auth}` },
-      timeout: 5000 // Resiliency
+      timeout: 5000, // Resiliency
+      httpsAgent: agent
     });
     return response.data;
   } catch (error) {
@@ -172,7 +177,8 @@ app.post('/api/attendance', async (req, res) => {
 
     // Passo 2: Situator (Apenas para RFID)
     if (input_type === 'RFID') {
-      const person = await getSituatorPerson(input_value, 'RFID');
+      let person = await getSituatorPerson(input_value, 'RFID');
+      if (Array.isArray(person)) person = person[0];
       if (!person) {
         return res.status(404).json({ error: 'Cadastro não localizado na portaria (Situator).' });
       }
@@ -183,7 +189,7 @@ app.post('/api/attendance', async (req, res) => {
 
     // Passo 3: Lyceum
     const lyceumData = await getLyceumStudent(documentToSearch);
-    
+
     let course_name = null;
     let lyceum_validated = false;
     let base64Photo = null;
@@ -191,11 +197,11 @@ app.post('/api/attendance', async (req, res) => {
     if (lyceumData && lyceumData.data) {
       lyceum_validated = true;
       student_name = lyceumData.data.nome_compl || student_name;
-      
+
       const nCurso = lyceumData.data.nome_curso || '';
       const nSerie = lyceumData.data.nome_serie ? ` - ${lyceumData.data.nome_serie}` : '';
       course_name = `${nCurso}${nSerie}`.trim() || null;
-      
+
       // Passo 4: Foto
       if (lyceumData.data.pessoa) {
         base64Photo = await getLyceumPhoto(lyceumData.data.pessoa);
@@ -207,7 +213,7 @@ app.post('/api/attendance', async (req, res) => {
     // Verificar se a presença já foi registrada nesta aula
     const checkQuery = `SELECT id FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;
     const checkResult = await pool.query(checkQuery, [classId, documentToSearch]);
-    
+
     if (checkResult.rows.length > 0) {
       return res.status(409).json({ error: 'Opa! Esta pessoa já registrou presença nesta aula.' });
     }
@@ -223,7 +229,7 @@ app.post('/api/attendance', async (req, res) => {
     ];
 
     const result = await pool.query(insertQuery, values);
-    
+
     res.status(201).json({
       message: 'Presença registrada.',
       attendance: result.rows[0]

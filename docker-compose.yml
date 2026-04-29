@@ -28,10 +28,10 @@ services:
       - DB_USER=presence_user
       - DB_PASS=presence_password
       - DB_NAME=presence_db
-      - SITUATOR_URL=https://network-services-middleware-situator.intranet.local/api/v1
+      - SITUATOR_URL=http://network-services-middleware-situator.intranet.local/api/v1
       - SITUATOR_USER=${SITUATOR_USER}
       - SITUATOR_PASS=${SITUATOR_PASS}
-      - LYCEUM_URL=http://192.168.55.9:4000/api/v1
+      - LYCEUM_URL=http://192.168.50.157:4000/api/v1
     ports:
       - "3000:3000"
     volumes:
