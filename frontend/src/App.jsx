@@ -46,6 +46,9 @@ function Home({ setActiveSession }) {
   const handleStart = async (e) => {
     e.preventDefault();
     setLoading(true);
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
     try {
       const res = await api.post('/sessions', { professor_name: professor, class_name: className });
       const session = res.data;
@@ -60,6 +63,9 @@ function Home({ setActiveSession }) {
   };
 
   const handleResume = async (session) => {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
     try {
       const res = await api.post(`/sessions/${session.id}/resume`);
       setActiveSession(res.data);
@@ -176,7 +182,6 @@ function Collection({ activeSession, setActiveSession }) {
   const [showRemoveModal, setShowRemoveModal] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   
-  const rfidInputRef = useRef(null);
   const bufferRef = useRef('');
   const latestAttendanceIdRef = useRef(null);
   const navigate = useNavigate();
@@ -218,19 +223,26 @@ function Collection({ activeSession, setActiveSession }) {
     };
   }, [activeSession, navigate]);
 
-  // Focus lock for RFID Kiosk mode
+  // Global RFID Key Listener
   useEffect(() => {
     if (!activeSession) return;
     
-    const focusInterval = setInterval(() => {
-      // Do not block focus for toast messages so kiosk can keep running
-      if (!showManual && !showEndModal && !showRemoveModal && rfidInputRef.current) {
-        rfidInputRef.current.focus();
+    const handleGlobalKeyDown = (e) => {
+      // Ignore if user is typing in a real input field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'Enter') {
+        const value = bufferRef.current;
+        bufferRef.current = '';
+        if (value) registerAttendance(value, 'RFID');
+      } else if (e.key.length === 1) {
+        bufferRef.current += e.key;
       }
-    }, 1000);
+    };
     
-    return () => clearInterval(focusInterval);
-  }, [activeSession, showManual, showEndModal, showRemoveModal]);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [activeSession]);
 
   // Auto-hide toast after 4 seconds
   useEffect(() => {
@@ -270,19 +282,6 @@ function Collection({ activeSession, setActiveSession }) {
     }
   };
 
-  const handleRFIDKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      const value = bufferRef.current;
-      bufferRef.current = '';
-      if (value) registerAttendance(value, 'RFID');
-    } else {
-      // Basic character filter
-      if (e.key.length === 1) {
-        bufferRef.current += e.key;
-      }
-    }
-  };
-
   const handeManualSubmit = (e) => {
     e.preventDefault();
     registerAttendance(manualInput, 'MANUAL');
@@ -296,6 +295,7 @@ function Collection({ activeSession, setActiveSession }) {
       localStorage.removeItem('presence_active_session');
       setActiveSession(null);
       setShowEndModal(false);
+      if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
       navigate('/');
     } catch (err) {
       setToastMsg('Erro ao encerrar a aula');
@@ -305,6 +305,7 @@ function Collection({ activeSession, setActiveSession }) {
   const handleSair = () => {
     setActiveSession(null);
     localStorage.removeItem('presence_active_session');
+    if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
     navigate('/');
   };
 
@@ -339,13 +340,6 @@ function Collection({ activeSession, setActiveSession }) {
           <button onClick={() => setShowEndModal(true)} className="btn btn-danger">Encerrar Aula</button>
         </div>
       </div>
-
-      <input 
-        ref={rfidInputRef}
-        className="hidden-rfid"
-        onKeyDown={handleRFIDKeyDown}
-        autoFocus
-      />
 
       <div className="widescreen-layout">
         <div>
