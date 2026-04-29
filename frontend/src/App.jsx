@@ -23,6 +23,11 @@ function Home({ setActiveSession }) {
   const [className, setClassName] = useState('');
   const [recentSessions, setRecentSessions] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  const [deleteModalSession, setDeleteModalSession] = useState(null);
+  const [randomCode, setRandomCode] = useState('');
+  const [confirmInput, setConfirmInput] = useState('');
+  
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -65,6 +70,23 @@ function Home({ setActiveSession }) {
     }
   };
 
+  const openDeleteModal = (session) => {
+    setDeleteModalSession(session);
+    setRandomCode(Math.floor(1000 + Math.random() * 9000).toString());
+    setConfirmInput('');
+  };
+
+  const handleDeleteSession = async () => {
+    if (!deleteModalSession) return;
+    try {
+      await api.delete(`/sessions/${deleteModalSession.id}`);
+      setRecentSessions(prev => prev.filter(s => s.id !== deleteModalSession.id));
+      setDeleteModalSession(null);
+    } catch (err) {
+      alert('Erro ao excluir a aula');
+    }
+  };
+
   return (
     <div className="card" style={{ maxWidth: '600px', margin: '0 auto' }}>
       <h1>Setup da Aula</h1>
@@ -97,9 +119,47 @@ function Home({ setActiveSession }) {
                   <button type="button" onClick={() => handleResume(s)} className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem' }}>
                     <RotateCcw size={16} /> Retomar
                   </button>
+                  <button type="button" onClick={() => openDeleteModal(s)} className="btn btn-danger" style={{ padding: '0.4rem 0.8rem', fontSize: '0.875rem', background: 'transparent', color: 'var(--error)', border: '1px solid var(--error)' }}>
+                    <Trash2 size={16} /> Remover
+                  </button>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {deleteModalSession && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Remover Aula?</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Tem certeza que deseja remover a aula <strong>{deleteModalSession.class_name}</strong>? Esta ação é irreversível e excluirá todos os registros de presença.
+            </p>
+            <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
+              <span style={{ display: 'block', fontSize: '0.9rem', color: 'var(--error)', marginBottom: '0.5rem' }}>Digite o código abaixo para confirmar:</span>
+              <strong style={{ fontSize: '1.5rem', letterSpacing: '4px', color: 'var(--text-primary)' }}>{randomCode}</strong>
+            </div>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Digite o código"
+              value={confirmInput}
+              onChange={e => setConfirmInput(e.target.value)}
+              style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '2px' }}
+              autoFocus
+            />
+            <div className="modal-actions">
+              <button onClick={() => setDeleteModalSession(null)} className="btn btn-secondary">Cancelar</button>
+              <button 
+                onClick={handleDeleteSession} 
+                className="btn btn-danger" 
+                disabled={confirmInput !== randomCode}
+                style={{ opacity: confirmInput !== randomCode ? 0.5 : 1 }}
+              >
+                Remover Aula
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -125,12 +185,44 @@ function Collection({ activeSession, setActiveSession }) {
       navigate('/');
       return;
     }
-    fetchAttendances();
+
+    let isSubscribed = true;
+
+    const fetchAndSync = async () => {
+      try {
+        const res = await api.get(`/sessions/${activeSession.id}/attendances`);
+        if (isSubscribed) {
+          setAttendances(res.data);
+          if (res.data.length > 0) {
+            setCurrentStudent(prev => {
+              if (!prev || prev.id !== res.data[0].id) {
+                return res.data[0];
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchAndSync();
+    const pollInterval = setInterval(fetchAndSync, 2500); // 2.5s silent poll
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(pollInterval);
+    };
+  }, [activeSession, navigate]);
+
+  // Focus lock for RFID Kiosk mode
+  useEffect(() => {
+    if (!activeSession) return;
     
-    // Focus lock for RFID Kiosk mode
     const focusInterval = setInterval(() => {
       // Do not block focus for toast messages so kiosk can keep running
-      if (!showManual && !showEndModal && rfidInputRef.current) {
+      if (!showManual && !showEndModal && !showRemoveModal && rfidInputRef.current) {
         rfidInputRef.current.focus();
       }
     }, 1000);
@@ -157,18 +249,7 @@ function Collection({ activeSession, setActiveSession }) {
     return () => clearTimeout(timer);
   }, [currentStudent, attendances]);
 
-  const fetchAttendances = async () => {
-    if (!activeSession) return;
-    try {
-      const res = await api.get(`/sessions/${activeSession.id}/attendances`);
-      setAttendances(res.data);
-      if (res.data.length > 0 && !currentStudent) {
-        setCurrentStudent(res.data[0]);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+
 
   const registerAttendance = async (value, type) => {
     if (!value) return;
@@ -242,7 +323,7 @@ function Collection({ activeSession, setActiveSession }) {
   if (!activeSession) return null;
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h2 style={{ marginBottom: 0 }}>{activeSession.class_name}</h2>
@@ -263,6 +344,8 @@ function Collection({ activeSession, setActiveSession }) {
         autoFocus
       />
 
+      <div className="widescreen-layout">
+        <div>
       {currentStudent ? (
         <div className="hero-display">
           <div className="hero-photo-placeholder">
@@ -319,9 +402,11 @@ function Collection({ activeSession, setActiveSession }) {
           </form>
         </div>
       )}
+        </div>
 
-      <h2>Últimos Registros</h2>
-      <div className="attendance-list">
+        <div>
+      <h2 style={{ marginTop: 0 }}>Últimos Registros</h2>
+      <div className="attendance-list compact-list">
         {attendances.map(att => (
           <div 
             key={att.id} 
@@ -330,8 +415,8 @@ function Collection({ activeSession, setActiveSession }) {
             style={{ cursor: 'pointer' }}
           >
             <div>
-              <div style={{ fontWeight: 600 }}>{shortName(att.student_name)}</div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              <div className="attendance-item-title" style={{ fontWeight: 600 }}>{shortName(att.student_name)}</div>
+              <div className="attendance-item-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                 {new Date(att.created_at).toLocaleTimeString()} • {att.course_name || 'Curso Misto'}
               </div>
             </div>
@@ -350,6 +435,8 @@ function Collection({ activeSession, setActiveSession }) {
             Nenhum registro até agora.
           </div>
         )}
+      </div>
+        </div>
       </div>
 
       {showEndModal && (
@@ -465,14 +552,20 @@ function Reports({ activeSession }) {
 
   const chartOptions = {
     tooltip: { trigger: 'item', formatter: '{b}: {c} aluno(s) ({d}%)' },
-    legend: { orient: 'horizontal', bottom: 0, textStyle: { fontSize: 11, color: 'var(--text-secondary)' }, type: 'scroll' },
+    legend: { 
+      orient: 'vertical', 
+      right: '5%', 
+      top: 'middle', 
+      textStyle: { fontSize: 12, color: 'var(--text-secondary)' }, 
+      type: 'scroll' 
+    },
     color: PIE_COLORS,
     series: [
       {
         name: 'Cursos',
         type: 'pie',
-        radius: ['35%', '60%'],
-        center: ['50%', '42%'],
+        radius: ['45%', '75%'],
+        center: ['35%', '50%'],
         avoidLabelOverlap: false,
         itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
         label: { show: false, position: 'center' },
@@ -566,7 +659,7 @@ function Reports({ activeSession }) {
   };
 
   return (
-    <div className="card" style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div className="card" style={{ maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>Relatório de Frequência</h1>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -622,21 +715,21 @@ function Reports({ activeSession }) {
         </div>
       </div>
 
-      <div className="attendance-list">
+      <div className="attendance-list compact-list">
         {attendances.map((att, i) => (
           <div key={att.id} className="attendance-item">
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <div style={{ width: '30px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>#{attendances.length - i}</div>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {att.student_photo ? (
                   <img src={`data:image/jpeg;base64,${att.student_photo}`} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <UserCheck size={20} color="var(--text-secondary)" />
+                  <UserCheck size={16} color="var(--text-secondary)" />
                 )}
               </div>
               <div>
-                <div style={{ fontWeight: 600 }}>{att.student_name}</div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                <div className="attendance-item-title" style={{ fontWeight: 600 }}>{att.student_name}</div>
+                <div className="attendance-item-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   {att.student_document} • {att.course_name || 'N/A'}
                 </div>
               </div>

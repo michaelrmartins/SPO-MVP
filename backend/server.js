@@ -130,6 +130,18 @@ app.post('/api/sessions/:id/resume', async (req, res) => {
   }
 });
 
+// Delete class
+app.delete('/api/sessions/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM attendances WHERE class_id = $1', [req.params.id]);
+    const result = await pool.query('DELETE FROM classes WHERE id = $1 RETURNING *', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ message: 'Deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get session by Id
 app.get('/api/sessions/:id', async (req, res) => {
   try {
