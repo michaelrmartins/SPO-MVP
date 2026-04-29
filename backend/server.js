@@ -189,8 +189,31 @@ app.post('/api/attendance', async (req, res) => {
 
     // Passo 2: Situator (Apenas para RFID)
     if (input_type === 'RFID') {
-      let person = await getSituatorPerson(input_value, 'RFID');
-      if (Array.isArray(person)) person = person[0];
+      let person = null;
+      
+      const fetchPerson = async (val) => {
+        let p = await getSituatorPerson(val, 'RFID');
+        if (Array.isArray(p)) p = p[0];
+        return p;
+      };
+
+      // Checagem inteligente: verifica se contém letras (hexa explícito)
+      if (/[a-fA-F]/.test(input_value)) {
+        const decValue = parseInt(input_value, 16).toString();
+        person = await fetchPerson(decValue);
+      } else {
+        // Apenas números. Tenta primeiro como decimal original.
+        person = await fetchPerson(input_value);
+        
+        // Se não encontrar, assume que pode ser um hexa contendo apenas números e converte.
+        if (!person) {
+          const decFromHex = parseInt(input_value, 16).toString();
+          if (decFromHex !== "NaN" && decFromHex !== input_value) {
+            person = await fetchPerson(decFromHex);
+          }
+        }
+      }
+
       if (!person) {
         return res.status(404).json({ error: 'Cadastro não localizado na portaria (Situator).' });
       }
