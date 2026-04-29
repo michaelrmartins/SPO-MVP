@@ -394,10 +394,13 @@ function Collection({ activeSession, setActiveSession }) {
           <form onSubmit={handeManualSubmit} style={{ display: 'flex', gap: '1rem' }}>
             <input 
               required 
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               className="input-field" 
               placeholder="Digite a matrícula do aluno..." 
               value={manualInput}
-              onChange={e => setManualInput(e.target.value)}
+              onChange={e => setManualInput(e.target.value.replace(/\D/g, ''))}
               style={{ flex: 1 }}
               autoFocus
             />
