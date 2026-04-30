@@ -192,6 +192,8 @@ function Collection({ activeSession, setActiveSession }) {
       return;
     }
 
+    document.body.classList.add('no-scroll');
+
     let isSubscribed = true;
 
     const fetchAndSync = async () => {
@@ -218,6 +220,7 @@ function Collection({ activeSession, setActiveSession }) {
     const pollInterval = setInterval(fetchAndSync, 2500); // 2.5s silent poll
 
     return () => {
+      document.body.classList.remove('no-scroll');
       isSubscribed = false;
       clearInterval(pollInterval);
     };
@@ -407,7 +410,7 @@ function Collection({ activeSession, setActiveSession }) {
         <div>
       <h2 style={{ marginTop: 0 }}>Últimos Registros</h2>
       <div className="attendance-list compact-list">
-        {attendances.map(att => (
+        {attendances.slice(0, 10).map(att => (
           <div 
             key={att.id} 
             className={`attendance-item ${att.lyceum_validated ? 'item-success' : 'item-warning'}`}
