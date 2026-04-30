@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Users, UserCheck, XCircle, AlertTriangle, Monitor, Play, RotateCcw, UserPlus, Trash2, Download, LogOut } from 'lucide-react';
+import { Users, UserCheck, XCircle, AlertTriangle, Monitor, Play, RotateCcw, UserPlus, Trash2, Download, LogOut, Filter, ArrowUpDown, ChevronDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -510,6 +510,10 @@ function Reports({ activeSession }) {
   const [attendances, setAttendances] = useState([]);
   const [includeCharts, setIncludeCharts] = useState(false);
 
+  const [selectedCourses, setSelectedCourses] = useState([]);
+  const [sortBy, setSortBy] = useState('time_desc');
+  const [showCourseDropdown, setShowCourseDropdown] = useState(false);
+
   useEffect(() => {
     const fetchDropdown = async () => {
       try {
@@ -540,16 +544,54 @@ function Reports({ activeSession }) {
     fetchAtt();
   }, [selectedSessionId]);
 
+  // Reset filters when session changes
+  useEffect(() => {
+    setSelectedCourses([]);
+    setShowCourseDropdown(false);
+  }, [selectedSessionId]);
+
+  const uniqueCourses = React.useMemo(() => {
+    const courses = new Set();
+    attendances.forEach(att => courses.add(att.course_name || 'Desconhecido'));
+    return Array.from(courses).sort();
+  }, [attendances]);
+
+  const toggleCourse = (course) => {
+    setSelectedCourses(prev => 
+      prev.includes(course) ? prev.filter(c => c !== course) : [...prev, course]
+    );
+  };
+
+  const processedAttendances = React.useMemo(() => {
+    let result = [...attendances];
+    if (selectedCourses.length > 0) {
+      result = result.filter(att => selectedCourses.includes(att.course_name || 'Desconhecido'));
+    }
+    result.sort((a, b) => {
+      if (sortBy === 'time_desc') {
+        return new Date(b.created_at) - new Date(a.created_at);
+      } else if (sortBy === 'time_asc') {
+        return new Date(a.created_at) - new Date(b.created_at);
+      } else if (sortBy === 'name_asc') {
+        return (a.student_name || '').localeCompare(b.student_name || '');
+      } else if (sortBy === 'course_asc') {
+        return (a.course_name || 'Desconhecido').localeCompare(b.course_name || 'Desconhecido');
+      }
+      return 0;
+    });
+    return result;
+  }, [attendances, selectedCourses, sortBy]);
+
   const courseData = React.useMemo(() => {
     const counts = {};
-    attendances.forEach(att => {
+    processedAttendances.forEach(att => {
       const course = att.course_name || 'Desconhecido';
       counts[course] = (counts[course] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [attendances]);
+  }, [processedAttendances]);
   
   const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
@@ -589,14 +631,14 @@ function Reports({ activeSession }) {
     doc.setFontSize(11);
     doc.text(`Professor: ${session?.professor_name || ''}`, 14, 30);
     doc.text(`Data: ${session ? new Date(session.created_at).toLocaleDateString() : ''}`, 14, 36);
-    doc.text(`Total de alunos: ${attendances.length}`, 14, 42);
+    doc.text(`Total de alunos: ${processedAttendances.length}`, 14, 42);
     
     const head = [[]];
     const body = [];
     
     if (mode === 'COMPACT') {
       head[0] = ['Nome', 'Matricula', 'Curso', 'Hora'];
-      attendances.forEach(att => {
+      processedAttendances.forEach(att => {
         body.push([
           att.student_name,
           att.student_document,
@@ -611,7 +653,7 @@ function Reports({ activeSession }) {
       });
     } else {
       head[0] = ['Foto', 'Nome', 'Matricula', 'Curso', 'Tipo', 'Validado', 'Hora'];
-      attendances.forEach(att => {
+      processedAttendances.forEach(att => {
         body.push([
           att.student_photo ? { content: '', image: `data:image/jpeg;base64,${att.student_photo}` } : '',
           att.student_name,
@@ -640,7 +682,7 @@ function Reports({ activeSession }) {
       });
     }
 
-    if (includeCharts && attendances.length > 0) {
+    if (includeCharts && processedAttendances.length > 0) {
       const chartContainer = document.getElementById('course-chart-container');
       if (chartContainer) {
         // Simple workaround for Recharts rendering animations delay if not fully loaded.
@@ -670,43 +712,98 @@ function Reports({ activeSession }) {
             <input type="checkbox" checked={includeCharts} onChange={e => setIncludeCharts(e.target.checked)} />
             Incluir gráficos no PDF
           </label>
-          <button onClick={() => exportPDF('COMPACT')} className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.5rem 0.8rem' }} disabled={attendances.length === 0}>
+          <button onClick={() => exportPDF('COMPACT')} className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.5rem 0.8rem' }} disabled={processedAttendances.length === 0}>
             <Download size={14} style={{ marginRight: '4px' }} /> Exportar Compacto
           </button>
-          <button onClick={() => exportPDF('COMPLETE')} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.5rem 0.8rem' }} disabled={attendances.length === 0}>
+          <button onClick={() => exportPDF('COMPLETE')} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.5rem 0.8rem' }} disabled={processedAttendances.length === 0}>
             <Download size={14} style={{ marginRight: '4px' }} /> Exportar Completo
           </button>
         </div>
       </div>
       
-      <div className="input-group" style={{ maxWidth: '400px', marginBottom: '2rem' }}>
-        <label className="input-label">Selecione a Aula</label>
-        <select 
-          className="input-field" 
-          value={selectedSessionId} 
-          onChange={e => setSelectedSessionId(e.target.value)}
-        >
-          {sessions.map(s => (
-            <option key={s.id} value={s.id}>{s.class_name} ({s.status}) - {new Date(s.created_at).toLocaleDateString()}</option>
-          ))}
-        </select>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
+        <div className="input-group" style={{ flex: '1 1 300px', marginBottom: 0 }}>
+          <label className="input-label">Selecione a Aula</label>
+          <select 
+            className="input-field" 
+            value={selectedSessionId} 
+            onChange={e => setSelectedSessionId(e.target.value)}
+          >
+            {sessions.map(s => (
+              <option key={s.id} value={s.id}>{s.class_name} ({s.status}) - {new Date(s.created_at).toLocaleDateString()}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="input-group" style={{ flex: '1 1 300px', marginBottom: 0, position: 'relative' }}>
+          <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Filter size={14} /> Filtrar por Turma
+          </label>
+          <div 
+            className="input-field" 
+            onClick={() => setShowCourseDropdown(!showCourseDropdown)}
+            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedCourses.length === 0 ? 'Todas as Turmas' : `${selectedCourses.length} turma(s) selecionada(s)`}
+            </span>
+            <ChevronDown size={18} color="var(--text-secondary)" />
+          </div>
+          {showCourseDropdown && (
+            <div style={{ 
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: '0.25rem',
+              background: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(0,0,0,0.1)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              maxHeight: '220px', overflowY: 'auto', padding: '0.5rem'
+            }}>
+              {uniqueCourses.map(course => (
+                <label key={course} style={{ display: 'flex', alignItems: 'center', padding: '0.5rem', cursor: 'pointer', borderRadius: '8px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,0.05)'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedCourses.includes(course)} 
+                    onChange={() => toggleCourse(course)} 
+                    style={{ marginRight: '0.75rem', width: '16px', height: '16px' }} 
+                  />
+                  {course}
+                </label>
+              ))}
+              {uniqueCourses.length === 0 && <div style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Nenhuma turma encontrada</div>}
+            </div>
+          )}
+        </div>
+
+        <div className="input-group" style={{ flex: '1 1 300px', marginBottom: 0 }}>
+          <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <ArrowUpDown size={14} /> Ordenar por
+          </label>
+          <select 
+            className="input-field" 
+            value={sortBy} 
+            onChange={e => setSortBy(e.target.value)}
+          >
+            <option value="time_desc">Horário (Mais recentes primeiro)</option>
+            <option value="time_asc">Horário (Mais antigos primeiro)</option>
+            <option value="name_asc">Nome do Aluno (A-Z)</option>
+            <option value="course_asc">Nome da Turma (A-Z)</option>
+          </select>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: '1 1 250px' }}>
           <div className="card" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.9)', flex: 1 }}>
              <h3 style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: 500 }}>Total de Alunos Presentes</h3>
-             <div style={{ fontSize: '3.5rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{attendances.length}</div>
+             <div style={{ fontSize: '3.5rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{processedAttendances.length}</div>
           </div>
           <div className="card" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.9)', flex: 1 }}>
              <h3 style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: 500 }}>Origem do Registro</h3>
              <div style={{ display: 'flex', width: '100%', height: '18px', borderRadius: '999px', overflow: 'hidden', marginBottom: '0.75rem', background: 'rgba(0,0,0,0.05)' }}>
-               <div style={{ width: `${attendances.length ? (attendances.filter(a => a.input_type === 'RFID').length / attendances.length) * 100 : 0}%`, background: '#34c759', transition: 'all 0.5s' }} />
-               <div style={{ width: `${attendances.length ? (attendances.filter(a => a.input_type === 'MANUAL').length / attendances.length) * 100 : 0}%`, background: '#ffcc00', transition: 'all 0.5s' }} />
+               <div style={{ width: `${processedAttendances.length ? (processedAttendances.filter(a => a.input_type === 'RFID').length / processedAttendances.length) * 100 : 0}%`, background: '#34c759', transition: 'all 0.5s' }} />
+               <div style={{ width: `${processedAttendances.length ? (processedAttendances.filter(a => a.input_type === 'MANUAL').length / processedAttendances.length) * 100 : 0}%`, background: '#ffcc00', transition: 'all 0.5s' }} />
              </div>
              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-               <span style={{ color: '#248a3d', fontWeight: 600 }}>• RFID: {attendances.filter(a => a.input_type === 'RFID').length}</span>
-               <span style={{ color: '#b38f00', fontWeight: 600 }}>Manual: {attendances.filter(a => a.input_type === 'MANUAL').length} •</span>
+               <span style={{ color: '#248a3d', fontWeight: 600 }}>• RFID: {processedAttendances.filter(a => a.input_type === 'RFID').length}</span>
+               <span style={{ color: '#b38f00', fontWeight: 600 }}>Manual: {processedAttendances.filter(a => a.input_type === 'MANUAL').length} •</span>
              </div>
           </div>
         </div>
@@ -719,10 +816,10 @@ function Reports({ activeSession }) {
       </div>
 
       <div className="attendance-list compact-list">
-        {attendances.map((att, i) => (
+        {processedAttendances.map((att, i) => (
           <div key={att.id} className="attendance-item">
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '30px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>#{attendances.length - i}</div>
+              <div style={{ width: '30px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>#{i + 1}</div>
               <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {att.student_photo ? (
                   <img src={`data:image/jpeg;base64,${att.student_photo}`} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -748,7 +845,7 @@ function Reports({ activeSession }) {
             </div>
           </div>
         ))}
-        {attendances.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>Sem registros.</div>}
+        {processedAttendances.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>Sem registros.</div>}
       </div>
     </div>
   );
