@@ -178,7 +178,7 @@ app.delete('/api/attendances/:id', async (req, res) => {
 app.post('/api/attendance', async (req, res) => {
   const { classId, input_value, input_type } = req.body; // type: 'RFID' ou 'MANUAL'
 
-  if (!classId || !input_value || !['RFID', 'MANUAL'].includes(input_type)) {
+  if (!classId || !input_value || !['RFID', 'MANUAL', 'FACIAL'].includes(input_type)) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
@@ -241,9 +241,9 @@ app.post('/api/attendance', async (req, res) => {
       if (lyceumData.data.pessoa) {
         base64Photo = await getLyceumPhoto(lyceumData.data.pessoa);
       }
-    } else if (input_type === 'MANUAL') {
-      // Se for manual e o Lyceum falhar, rejeitamos pois não há Situator como Fallback
-      return res.status(404).json({ error: 'Matrícula não encontrada no Lyceum. Impossível validar entrada manual.' });
+    } else if (input_type === 'MANUAL' || input_type === 'FACIAL') {
+      // Se for manual/facial e o Lyceum falhar, rejeitamos pois não há Situator como Fallback
+      return res.status(404).json({ error: 'Matrícula não encontrada no Lyceum. Impossível validar entrada.' });
     }
     // Verificar se a presença já foi registrada nesta aula
     const checkQuery = `SELECT id FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;

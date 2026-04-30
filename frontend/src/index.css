@@ -176,22 +176,22 @@ h2 {
 .hero-display {
   display: flex;
   align-items: center;
-  gap: 2.5rem;
-  padding: 3rem 2.5rem;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem;
   background: rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(50px) saturate(200%);
   -webkit-backdrop-filter: blur(50px) saturate(200%);
   border-radius: var(--border-radius);
   border: 1px solid var(--glass-border);
-  margin-bottom: 2rem;
-  min-height: 320px;
+  margin-bottom: 1.5rem;
+  min-height: 200px;
   animation: fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
   box-shadow: var(--glass-shadow);
 }
 
 .hero-photo-placeholder {
-  width: 180px;
-  height: 180px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.6);
   display: flex;
@@ -214,7 +214,7 @@ h2 {
 }
 
 .hero-name {
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 700;
   margin-bottom: 0.25rem;
   letter-spacing: -0.03em;
@@ -222,7 +222,7 @@ h2 {
 }
 
 .hero-course {
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -417,3 +417,70 @@ h2 {
 .no-scroll {
   overflow: hidden !important;
 }
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.15);
+  transition: .3s;
+  border-radius: 28px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+}
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 24px;
+  width: 24px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+input:checked + .toggle-slider {
+  background-color: var(--success);
+}
+input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+/* Camera Container */
+.camera-container {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+.camera-video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.camera-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+

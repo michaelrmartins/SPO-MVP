@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Users, UserCheck, XCircle, AlertTriangle, Monitor, Play, RotateCcw, UserPlus, Trash2, Download, LogOut, Filter, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Users, UserCheck, XCircle, AlertTriangle, Monitor, Play, RotateCcw, UserPlus, Trash2, Download, LogOut, Filter, ArrowUpDown, ChevronDown, Camera } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -182,9 +182,21 @@ function Collection({ activeSession, setActiveSession }) {
   const [showRemoveModal, setShowRemoveModal] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   
+  const [isFacialEnabled, setIsFacialEnabled] = useState(false);
+  const [cameras, setCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
+
   const bufferRef = useRef('');
   const latestAttendanceIdRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const overlayRef = useRef(null);
+  const cooldownsRef = useRef({});
+  const isProcessingRef = useRef(false);
+
   const navigate = useNavigate();
+
+  const FACIAL_COOLDOWN_MS = parseInt(import.meta.env.VITE_FACIAL_COOLDOWN_MS || '3000', 10);
 
   useEffect(() => {
     if (!activeSession) {
@@ -219,12 +231,24 @@ function Collection({ activeSession, setActiveSession }) {
     fetchAndSync();
     const pollInterval = setInterval(fetchAndSync, 2500); // 2.5s silent poll
 
+    const onEnd = () => setShowEndModal(true);
+    const onSair = () => {
+      setActiveSession(null);
+      localStorage.removeItem('presence_active_session');
+      if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+      navigate('/');
+    };
+    window.addEventListener('requestEndClass', onEnd);
+    window.addEventListener('requestSair', onSair);
+
     return () => {
       document.body.classList.remove('no-scroll');
       isSubscribed = false;
       clearInterval(pollInterval);
+      window.removeEventListener('requestEndClass', onEnd);
+      window.removeEventListener('requestSair', onSair);
     };
-  }, [activeSession, navigate]);
+  }, [activeSession, navigate, setActiveSession]);
 
   // Global RFID Key Listener
   useEffect(() => {
@@ -265,6 +289,126 @@ function Collection({ activeSession, setActiveSession }) {
     }
     return () => clearTimeout(timer);
   }, [currentStudent]);
+
+  // Facial Recognition Camera Logic
+  useEffect(() => {
+    let stream = null;
+    let interval = null;
+
+    const startCamera = async () => {
+      if (!isFacialEnabled) return;
+      try {
+        const constraints = {
+          video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'user' }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        setCameras(videoDevices);
+        
+        if (!selectedCameraId && videoDevices.length > 0) {
+          const currentTrack = stream.getVideoTracks()[0];
+          const activeDevice = videoDevices.find(d => d.label === currentTrack.label);
+          if (activeDevice) {
+            setSelectedCameraId(activeDevice.deviceId);
+          } else {
+            setSelectedCameraId(videoDevices[0].deviceId);
+          }
+        }
+
+        interval = setInterval(processFrame, 500); // 2 frames/sec
+      } catch (err) {
+        console.error("Camera error:", err);
+        setToastMsg("Erro ao acessar a câmera. Verifique as permissões.");
+        setIsFacialEnabled(false);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (interval) clearInterval(interval);
+      if (overlayRef.current) {
+         const ctx = overlayRef.current.getContext('2d');
+         ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      }
+    };
+  }, [isFacialEnabled, selectedCameraId]);
+
+  const processFrame = async () => {
+    if (isProcessingRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !overlayRef.current) return;
+    const video = videoRef.current;
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+    isProcessingRef.current = true;
+
+    try {
+      const canvas = canvasRef.current;
+      const overlay = overlayRef.current;
+      
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+      }
+
+      const isFrontCamera = !selectedCameraId || (!cameras.find(c => c.deviceId === selectedCameraId)?.label?.toLowerCase().includes('back'));
+
+      const ctx = canvas.getContext('2d');
+      if (isFrontCamera) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      
+      const base64Image = canvas.toDataURL('image/jpeg', 0.7).replace(/^data:image\/jpeg;base64,/, '');
+
+      const res = await axios.post('http://192.168.55.9:5000/recognize', { image: base64Image });
+      const data = res.data;
+      
+      const overlayCtx = overlay.getContext('2d');
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+      if (data && data.match) {
+        const { top, left, bottom, right } = data.box;
+        overlayCtx.strokeStyle = '#30d158';
+        overlayCtx.lineWidth = 4;
+        overlayCtx.strokeRect(left, top, right - left, bottom - top);
+        
+        overlayCtx.fillStyle = '#30d158';
+        overlayCtx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif';
+        // Add a subtle shadow to text for readability
+        overlayCtx.shadowColor = 'rgba(0,0,0,0.5)';
+        overlayCtx.shadowBlur = 4;
+        overlayCtx.fillText(data.nome, left, top > 30 ? top - 10 : top + 30);
+        overlayCtx.shadowBlur = 0; // reset
+
+        const now = Date.now();
+        const lastSeen = cooldownsRef.current[data.documento] || 0;
+        
+        if (now - lastSeen > FACIAL_COOLDOWN_MS) {
+          cooldownsRef.current[data.documento] = now;
+          registerAttendance(data.documento, 'FACIAL');
+        }
+      }
+    } catch (err) {
+      if (overlayRef.current) {
+        const overlayCtx = overlayRef.current.getContext('2d');
+        overlayCtx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      }
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
 
 
 
@@ -331,18 +475,6 @@ function Collection({ activeSession, setActiveSession }) {
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h2 style={{ marginBottom: 0 }}>{activeSession.class_name}</h2>
-          <div style={{ color: 'var(--text-secondary)' }}>Prof. {activeSession.professor_name}</div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={handleSair} className="btn btn-secondary">
-            <LogOut size={16} style={{ marginRight: '0.5rem' }} /> Sair
-          </button>
-          <button onClick={() => setShowEndModal(true)} className="btn btn-danger">Encerrar Aula</button>
-        </div>
-      </div>
 
       <div className="widescreen-layout">
         <div>
@@ -380,11 +512,58 @@ function Collection({ activeSession, setActiveSession }) {
         </div>
       )}
 
-      <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--glass-bg)', padding: '0.5rem 1rem', borderRadius: '999px', border: '1px solid var(--glass-border)' }}>
+          <span style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Reconhecimento Facial</span>
+          <label className="toggle-switch">
+            <input type="checkbox" checked={isFacialEnabled} onChange={e => setIsFacialEnabled(e.target.checked)} />
+            <span className="toggle-slider"></span>
+          </label>
+        </div>
         <button onClick={() => setShowManual(!showManual)} className="btn btn-secondary">
           <UserPlus size={18} /> {showManual ? 'Ocultar Entrada Manual' : 'Digitar matrícula'}
         </button>
       </div>
+
+      {isFacialEnabled && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.1rem' }}>
+              <Camera size={20} /> Câmera
+            </h3>
+            {cameras.length > 0 && (
+              <select 
+                className="input-field" 
+                style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.9rem', minWidth: '150px' }}
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+              >
+                {cameras.map((cam, idx) => (
+                  <option key={cam.deviceId || idx} value={cam.deviceId}>
+                    {cam.label || `Câmera ${idx + 1}`}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          
+          <div className="camera-container">
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              className="camera-video"
+              style={{ transform: (!selectedCameraId || !cameras.find(c => c.deviceId === selectedCameraId)?.label?.toLowerCase().includes('back')) ? 'scaleX(-1)' : 'none' }}
+            />
+            <canvas ref={overlayRef} className="camera-overlay" />
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Posicione o rosto na câmera para registrar a presença automaticamente.
+          </div>
+        </div>
+      )}
 
       {showManual && (
         <div className="card" style={{ marginBottom: '2rem' }}>
@@ -875,15 +1054,35 @@ function App() {
         background: 'rgba(58, 108, 112, 0.7)', /* 70% opacity base on requested color */
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        padding: '1rem',
+        padding: '0.75rem 2rem',
         display: 'flex',
-        justifyContent: 'center',
+        justifyContent: activeSession ? 'space-between' : 'center',
+        alignItems: 'center',
         position: 'sticky',
         top: 0,
         zIndex: 40,
         borderBottom: '1px solid rgba(255, 255, 255, 0.2)'
       }}>
-        <img src="https://fmc-campos.com.br/wp-content/uploads/2023/08/white_fmc.webp" alt="FMC Logo" style={{ height: '45px', objectFit: 'contain' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <img src="https://fmc-campos.com.br/wp-content/uploads/2023/08/white_fmc.webp" alt="FMC Logo" style={{ height: '35px', objectFit: 'contain' }} />
+          {activeSession && (
+            <div style={{ color: 'white', borderLeft: '1px solid rgba(255,255,255,0.3)', paddingLeft: '1.5rem' }}>
+              <div style={{ fontWeight: 600, fontSize: '1.1rem', lineHeight: 1.2 }}>{activeSession.class_name}</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>Prof. {activeSession.professor_name}</div>
+            </div>
+          )}
+        </div>
+        
+        {activeSession && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('requestSair'))} className="btn btn-secondary" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
+              <LogOut size={14} style={{ marginRight: '0.4rem' }} /> Sair
+            </button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('requestEndClass'))} className="btn btn-danger" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
+              Encerrar Aula
+            </button>
+          </div>
+        )}
       </div>
       <div className="app-container">
         {!activeSession && (
