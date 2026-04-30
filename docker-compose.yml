@@ -22,7 +22,7 @@ services:
     container_name: presence-backend
     command: npm run dev
     environment:
-      - PORT=3000
+      - PORT=3001
       - DB_HOST=db
       - DB_PORT=5432
       - DB_USER=presence_user
@@ -33,7 +33,7 @@ services:
       - SITUATOR_PASS=${SITUATOR_PASS}
       - LYCEUM_URL=http://192.168.50.157:4000/api/v1
     ports:
-      - "3000:3000"
+      - "3001:3001"
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -49,7 +49,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:3000/api
+      - VITE_API_URL=http://localhost:3001/api
     volumes:
       - ./frontend:/app
       - /app/node_modules

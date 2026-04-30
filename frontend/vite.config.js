@@ -7,9 +7,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts: ['spo.fmc.intranet'],
     proxy: {
       '/api': {
-        target: 'http://backend:3000',
+        target: 'http://backend:3001',
         changeOrigin: true
       }
     }
