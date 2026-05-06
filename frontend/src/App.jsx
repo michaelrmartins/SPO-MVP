@@ -372,7 +372,7 @@ function Collection({ activeSession, setActiveSession }) {
       
       const base64Image = canvas.toDataURL('image/jpeg', 0.7).replace(/^data:image\/jpeg;base64,/, '');
 
-      const res = await axios.post('http://192.168.55.9:5000/recognize', { image: base64Image });
+      const res = await axios.post('http://192.168.50.157:5000/recognize', { image: base64Image });
       const data = res.data;
       
       const overlayCtx = overlay.getContext('2d');
