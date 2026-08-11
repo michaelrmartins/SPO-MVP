@@ -675,7 +675,13 @@ function Collection({ activeSession, setActiveSession }) {
               <div className="badge badge-neutral">{att.input_type}</div>
               {!att.lyceum_validated && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--warning)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <AlertTriangle size={12} /> Dados Incompletos
+                  {att.input_type === 'CPF' ? (
+                    <span>-</span>
+                  ) : (
+                    <>
+                      <AlertTriangle size={12} /> Dados Incompletos
+                    </>
+                  )}
                 </div>
               )}
             </div>

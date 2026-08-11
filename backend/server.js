@@ -184,7 +184,10 @@ app.post('/api/attendance', async (req, res) => {
 
   try {
     let documentToSearch = input_value;
-    let student_name = input_type === 'CPF' ? 'Pessoa (Registro por CPF)' : 'Aluno (Entrada Manual)';
+    let student_name = 'Aluno (Entrada Manual)';
+    if (input_type === 'CPF') {
+      student_name = input_value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    }
     let situator_id = null;
 
     // Passo 2: Situator (Apenas para RFID)
