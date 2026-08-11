@@ -18,6 +18,28 @@ function shortName(fullName) {
   return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
+function validaCPF(cpf) {
+  cpf = cpf.replace(/\D+/g, '');
+  if (cpf.length !== 11) return false;
+
+  let soma = 0;
+  let resto;
+  if (/^(\d)\1{10}$/.test(cpf)) return false; // Verifica sequências iguais
+
+  for (let i = 1; i <= 9; i++) soma += parseInt(cpf.substring(i-1, i)) * (11 - i);
+  resto = (soma * 10) % 11;
+  if ((resto === 10) || (resto === 11)) resto = 0;
+  if (resto !== parseInt(cpf.substring(9, 10))) return false;
+
+  soma = 0;
+  for (let i = 1; i <= 10; i++) soma += parseInt(cpf.substring(i-1, i)) * (12 - i);
+  resto = (soma * 10) % 11;
+  if ((resto === 10) || (resto === 11)) resto = 0;
+  if (resto !== parseInt(cpf.substring(10, 11))) return false;
+
+  return true;
+}
+
 function Home({ setActiveSession }) {
   const [professor, setProfessor] = useState('');
   const [className, setClassName] = useState('');
@@ -178,6 +200,8 @@ function Collection({ activeSession, setActiveSession }) {
   const [currentStudent, setCurrentStudent] = useState(null);
   const [manualInput, setManualInput] = useState('');
   const [showManual, setShowManual] = useState(false);
+  const [cpfInput, setCpfInput] = useState('');
+  const [showCpf, setShowCpf] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
@@ -436,6 +460,28 @@ function Collection({ activeSession, setActiveSession }) {
     setShowManual(false);
   };
 
+  const handleCpfSubmit = (e) => {
+    e.preventDefault();
+    if (!validaCPF(cpfInput)) {
+      setToastMsg('CPF inválido. Verifique o número digitado.');
+      return;
+    }
+    const cleanCpf = cpfInput.replace(/\D/g, '');
+    registerAttendance(cleanCpf, 'CPF');
+    setCpfInput('');
+    setShowCpf(false);
+  };
+
+  const handleCpfChange = (e) => {
+    let value = e.target.value;
+    let cpfPattern = value.replace(/\D/g, '')
+                          .replace(/(\d{3})(\d)/, '$1.$2')
+                          .replace(/(\d{3})(\d)/, '$1.$2')
+                          .replace(/(\d{3})(\d)/, '$1-$2')
+                          .replace(/(-\d{2})\d+?$/, '$1');
+    setCpfInput(cpfPattern);
+  };
+
   const handleEndClass = async () => {
     try {
       await api.post(`/sessions/${activeSession.id}/end`);
@@ -520,9 +566,14 @@ function Collection({ activeSession, setActiveSession }) {
             <span className="toggle-slider"></span>
           </label>
         </div>
-        <button onClick={() => setShowManual(!showManual)} className="btn btn-secondary">
-          <UserPlus size={18} /> {showManual ? 'Ocultar Entrada Manual' : 'Digitar matrícula'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => { setShowManual(!showManual); setShowCpf(false); }} className="btn btn-secondary">
+            <UserPlus size={18} /> {showManual ? 'Ocultar Matrícula' : 'Digitar Matrícula'}
+          </button>
+          <button onClick={() => { setShowCpf(!showCpf); setShowManual(false); }} className="btn btn-secondary">
+            <UserCheck size={18} /> {showCpf ? 'Ocultar CPF' : 'Digitar CPF'}
+          </button>
+        </div>
       </div>
 
       {isFacialEnabled && (
@@ -580,7 +631,25 @@ function Collection({ activeSession, setActiveSession }) {
               style={{ flex: 1 }}
               autoFocus
             />
-            <button type="submit" className="btn btn-primary">Registrar</button>
+            <button type="submit" className="btn btn-primary">Registrar Matrícula</button>
+          </form>
+        </div>
+      )}
+
+      {showCpf && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <form onSubmit={handleCpfSubmit} style={{ display: 'flex', gap: '1rem' }}>
+            <input 
+              required 
+              type="text"
+              className="input-field" 
+              placeholder="Digite o CPF..." 
+              value={cpfInput}
+              onChange={handleCpfChange}
+              style={{ flex: 1 }}
+              autoFocus
+            />
+            <button type="submit" className="btn btn-primary">Registrar CPF</button>
           </form>
         </div>
       )}

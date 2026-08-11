@@ -178,13 +178,13 @@ app.delete('/api/attendances/:id', async (req, res) => {
 app.post('/api/attendance', async (req, res) => {
   const { classId, input_value, input_type } = req.body; // type: 'RFID' ou 'MANUAL'
 
-  if (!classId || !input_value || !['RFID', 'MANUAL', 'FACIAL'].includes(input_type)) {
+  if (!classId || !input_value || !['RFID', 'MANUAL', 'FACIAL', 'CPF'].includes(input_type)) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
   try {
     let documentToSearch = input_value;
-    let student_name = 'Aluno (Entrada Manual)';
+    let student_name = input_type === 'CPF' ? 'Pessoa (Registro por CPF)' : 'Aluno (Entrada Manual)';
     let situator_id = null;
 
     // Passo 2: Situator (Apenas para RFID)
