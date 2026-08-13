@@ -43,6 +43,7 @@ function validaCPF(cpf) {
 function Home({ setActiveSession }) {
   const [professor, setProfessor] = useState('');
   const [className, setClassName] = useState('');
+  const [minPermanence, setMinPermanence] = useState(60);
   const [recentSessions, setRecentSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   
@@ -72,7 +73,11 @@ function Home({ setActiveSession }) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
     try {
-      const res = await api.post('/sessions', { professor_name: professor, class_name: className });
+      const res = await api.post('/sessions', { 
+        professor_name: professor, 
+        class_name: className,
+        min_permanence_minutes: minPermanence
+      });
       const session = res.data;
       setActiveSession(session);
       localStorage.setItem('presence_active_session', JSON.stringify(session));
@@ -126,6 +131,11 @@ function Home({ setActiveSession }) {
         <div className="input-group">
           <label className="input-label">Nome da Disciplina / Aula</label>
           <input required className="input-field" value={className} onChange={e => setClassName(e.target.value)} placeholder="Ex: Anatomia" />
+        </div>
+        <div className="input-group">
+          <label className="input-label">Tempo Mínimo de Permanência (minutos) para Certificado</label>
+          <input required type="number" min="1" className="input-field" value={minPermanence} onChange={e => setMinPermanence(parseInt(e.target.value))} placeholder="Ex: 60" />
+          <p style={{fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem'}}>O aluno precisará registrar a <b>Entrada</b> e a <b>Saída</b> para contabilizar o tempo.</p>
         </div>
         <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%' }}>
           <Play size={20} /> Iniciar Nova Aula
@@ -205,6 +215,7 @@ function Collection({ activeSession, setActiveSession }) {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
+  const [toastType, setToastType] = useState('error');
   
   const [isFacialEnabled, setIsFacialEnabled] = useState(false);
   const [cameras, setCameras] = useState([]);
@@ -349,6 +360,7 @@ function Collection({ activeSession, setActiveSession }) {
       } catch (err) {
         console.error("Camera error:", err);
         setToastMsg("Erro ao acessar a câmera. Verifique as permissões.");
+        setToastType('error');
         setIsFacialEnabled(false);
       }
     };
@@ -445,11 +457,19 @@ function Collection({ activeSession, setActiveSession }) {
         input_type: type
       });
       const newAttendance = res.data.attendance;
+      const isExit = res.data.is_exit;
       latestAttendanceIdRef.current = newAttendance.id;
       setCurrentStudent(newAttendance);
-      setAttendances(prev => [newAttendance, ...prev]);
+      if (isExit) {
+        setAttendances(prev => prev.map(a => a.id === newAttendance.id ? newAttendance : a));
+      } else {
+        setAttendances(prev => [newAttendance, ...prev]);
+      }
+      setToastMsg(res.data.message);
+      setToastType('success');
     } catch (err) {
       setToastMsg(err.response?.data?.error || 'Erro ao registrar presença');
+      setToastType('error');
     }
   };
 
@@ -464,6 +484,7 @@ function Collection({ activeSession, setActiveSession }) {
     e.preventDefault();
     if (!validaCPF(cpfInput)) {
       setToastMsg('CPF inválido. Verifique o número digitado.');
+      setToastType('error');
       return;
     }
     const cleanCpf = cpfInput.replace(/\D/g, '');
@@ -492,6 +513,7 @@ function Collection({ activeSession, setActiveSession }) {
       navigate('/');
     } catch (err) {
       setToastMsg('Erro ao encerrar a aula');
+      setToastType('error');
     }
   };
 
@@ -512,8 +534,10 @@ function Collection({ activeSession, setActiveSession }) {
       }
       setShowRemoveModal(null);
       setToastMsg('Registro removido com sucesso');
+      setToastType('success');
     } catch (err) {
       setToastMsg('Erro ao remover registro');
+      setToastType('error');
     }
   };
 
@@ -534,7 +558,9 @@ function Collection({ activeSession, setActiveSession }) {
             )}
           </div>
           <div className="hero-details">
-            <div className="badge badge-success" style={{ display: 'inline-block', marginBottom: '0.5rem' }}>Identificação Confirmada</div>
+            <div className={`badge ${currentStudent.exit_at ? 'badge-warning' : 'badge-success'}`} style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
+              {currentStudent.exit_at ? 'Saída Registrada' : 'Entrada Registrada'}
+            </div>
             <div className="hero-name">{shortName(currentStudent.student_name)}</div>
             {currentStudent.course_name && <div className="hero-course">{currentStudent.course_name}</div>}
             
@@ -668,7 +694,7 @@ function Collection({ activeSession, setActiveSession }) {
             <div>
               <div className="attendance-item-title" style={{ fontWeight: 600 }}>{shortName(att.student_name)}</div>
               <div className="attendance-item-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                {new Date(att.created_at).toLocaleTimeString()} • {att.course_name || 'Curso Misto'}
+                E: {new Date(att.created_at).toLocaleTimeString()} {att.exit_at ? `| S: ${new Date(att.exit_at).toLocaleTimeString()}` : ''} • {att.course_name || 'Curso Misto'}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -743,13 +769,13 @@ function Collection({ activeSession, setActiveSession }) {
           display: 'flex', justifyContent: 'center', zIndex: 100, pointerEvents: 'none'
         }}>
           <div style={{
-            background: 'rgba(255, 69, 58, 0.95)', color: 'white', padding: '1rem 2rem',
+            background: toastType === 'success' ? 'rgba(48, 209, 88, 0.95)' : 'rgba(255, 69, 58, 0.95)', color: 'white', padding: '1rem 2rem',
             borderRadius: '999px', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', 
-            boxShadow: '0 8px 32px rgba(255, 69, 58, 0.4)',
+            boxShadow: toastType === 'success' ? '0 8px 32px rgba(48, 209, 88, 0.4)' : '0 8px 32px rgba(255, 69, 58, 0.4)',
             display: 'flex', alignItems: 'center', gap: '0.75rem',
             animation: 'fadeIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)', pointerEvents: 'auto'
           }}>
-            <AlertTriangle size={24} />
+            {toastType === 'success' ? <UserCheck size={24} /> : <AlertTriangle size={24} />}
             <span style={{ fontWeight: 600, fontSize: '1.05rem' }}>{toastMsg}</span>
           </div>
         </div>
@@ -763,6 +789,8 @@ function Reports({ activeSession }) {
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [attendances, setAttendances] = useState([]);
   const [includeCharts, setIncludeCharts] = useState(false);
+  const [minPermanence, setMinPermanence] = useState(60);
+  const [savingMinPerm, setSavingMinPerm] = useState(false);
 
   const [selectedCourses, setSelectedCourses] = useState([]);
   const [sortBy, setSortBy] = useState('time_desc');
@@ -787,6 +815,12 @@ function Reports({ activeSession }) {
 
   useEffect(() => {
     if (!selectedSessionId) return;
+    const session = sessions.find(s => s.id === selectedSessionId);
+    if (session && session.min_permanence_minutes) {
+      setMinPermanence(session.min_permanence_minutes);
+    } else {
+      setMinPermanence(60);
+    }
     const fetchAtt = async () => {
       try {
         const res = await api.get(`/sessions/${selectedSessionId}/attendances`);
@@ -796,13 +830,41 @@ function Reports({ activeSession }) {
       }
     }
     fetchAtt();
-  }, [selectedSessionId]);
+  }, [selectedSessionId, sessions]);
 
   // Reset filters when session changes
   useEffect(() => {
     setSelectedCourses([]);
     setShowCourseDropdown(false);
   }, [selectedSessionId]);
+
+  const handleUpdateMinPermanence = async () => {
+    if (!selectedSessionId) return;
+    setSavingMinPerm(true);
+    try {
+      await api.patch(`/sessions/${selectedSessionId}/min-permanence`, { min_permanence_minutes: minPermanence });
+      alert('Tempo mínimo atualizado com sucesso!');
+      // Update local sessions array
+      setSessions(prev => prev.map(s => s.id === selectedSessionId ? { ...s, min_permanence_minutes: minPermanence } : s));
+    } catch (err) {
+      alert('Erro ao atualizar tempo mínimo.');
+    } finally {
+      setSavingMinPerm(false);
+    }
+  };
+
+  const getAttendanceStatus = (att) => {
+    if (!att.exit_at) return { time: 0, text: 'Inapto', timeText: '0', exitText: 'Pendente' };
+    const entryTime = new Date(att.created_at);
+    const exitTime = new Date(att.exit_at);
+    const diffMins = Math.round((exitTime - entryTime) / 60000);
+    return {
+      time: diffMins,
+      text: diffMins >= minPermanence ? 'Apto' : 'Inapto',
+      timeText: `${diffMins}`,
+      exitText: exitTime.toLocaleTimeString()
+    };
+  };
 
   const uniqueCourses = React.useMemo(() => {
     const courses = new Set();
@@ -891,13 +953,17 @@ function Reports({ activeSession }) {
     const body = [];
     
     if (mode === 'COMPACT') {
-      head[0] = ['Nome', 'Matricula', 'Curso', 'Hora'];
+      head[0] = ['Nome', 'Matricula', 'Curso', 'Entrada', 'Saida', 'Tempo (min)', 'Status'];
       processedAttendances.forEach(att => {
+        const status = getAttendanceStatus(att);
         body.push([
           att.student_name,
           att.student_document,
           att.course_name || 'N/A',
-          new Date(att.created_at).toLocaleTimeString()
+          new Date(att.created_at).toLocaleTimeString(),
+          status.exitText,
+          status.timeText,
+          status.text
         ]);
       });
       autoTable(doc, {
@@ -906,16 +972,18 @@ function Reports({ activeSession }) {
         body: body,
       });
     } else {
-      head[0] = ['Foto', 'Nome', 'Matricula', 'Curso', 'Tipo', 'Validado', 'Hora'];
+      head[0] = ['Foto', 'Nome', 'Matricula', 'Curso', 'Entrada', 'Saida', 'Tempo (min)', 'Status'];
       processedAttendances.forEach(att => {
+        const status = getAttendanceStatus(att);
         body.push([
           att.student_photo ? { content: '', image: `data:image/jpeg;base64,${att.student_photo}` } : '',
           att.student_name,
           att.student_document,
           att.course_name || 'N/A',
-          att.input_type,
-          att.lyceum_validated ? 'Sim' : 'Nao',
-          new Date(att.created_at).toLocaleTimeString()
+          new Date(att.created_at).toLocaleTimeString(),
+          status.exitText,
+          status.timeText,
+          status.text
         ]);
       });
       autoTable(doc, {
@@ -1041,6 +1109,25 @@ function Reports({ activeSession }) {
             <option value="course_asc">Nome da Turma (A-Z)</option>
           </select>
         </div>
+
+        <div className="input-group" style={{ flex: '1 1 300px', marginBottom: 0 }}>
+          <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            Tempo Mínimo (min)
+          </label>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input 
+              type="number" 
+              min="1" 
+              className="input-field" 
+              value={minPermanence} 
+              onChange={e => setMinPermanence(parseInt(e.target.value) || 0)} 
+              style={{ flex: 1 }}
+            />
+            <button onClick={handleUpdateMinPermanence} disabled={savingMinPerm} className="btn btn-primary" style={{ padding: '0 1rem' }}>
+              Salvar
+            </button>
+          </div>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2rem' }}>
@@ -1070,35 +1157,47 @@ function Reports({ activeSession }) {
       </div>
 
       <div className="attendance-list compact-list">
-        {processedAttendances.map((att, i) => (
-          <div key={att.id} className="attendance-item">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '30px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>#{i + 1}</div>
-              <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {att.student_photo ? (
-                  <img src={`data:image/jpeg;base64,${att.student_photo}`} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <UserCheck size={16} color="var(--text-secondary)" />
-                )}
-              </div>
-              <div>
-                <div className="attendance-item-title" style={{ fontWeight: 600 }}>{att.student_name}</div>
-                <div className="attendance-item-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  {att.student_document} • {att.course_name || 'N/A'}
+        {processedAttendances.map((att, i) => {
+          const status = getAttendanceStatus(att);
+          return (
+          <div key={att.id} className="attendance-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ width: '30px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>#{i + 1}</div>
+                <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', background: 'var(--surface-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {att.student_photo ? (
+                    <img src={`data:image/jpeg;base64,${att.student_photo}`} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <UserCheck size={16} color="var(--text-secondary)" />
+                  )}
+                </div>
+                <div>
+                  <div className="attendance-item-title" style={{ fontWeight: 600 }}>{att.student_name}</div>
+                  <div className="attendance-item-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    {att.student_document} • {att.course_name || 'N/A'}
+                  </div>
                 </div>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span className="badge badge-neutral">{att.input_type}</span>
+                {att.lyceum_validated ? (
+                  <span className="badge badge-success"><UserCheck size={12} style={{ marginRight: 4 }}/> Lyceum</span>
+                ) : (
+                  <span className="badge badge-warning"><AlertTriangle size={12} style={{ marginRight: 4 }}/> Situator Somente</span>
+                )}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div>{new Date(att.created_at).toLocaleTimeString()}</div>
-              <span className="badge badge-neutral">{att.input_type}</span>
-              {att.lyceum_validated ? (
-                <span className="badge badge-success"><UserCheck size={12} style={{ marginRight: 4 }}/> Lyceum</span>
-              ) : (
-                <span className="badge badge-warning"><AlertTriangle size={12} style={{ marginRight: 4 }}/> Situator Somente</span>
-              )}
+            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', padding: '0.75rem', background: 'var(--surface)', borderRadius: '8px', fontSize: '0.875rem' }}>
+              <div><strong style={{color: 'var(--text-secondary)'}}>Entrada:</strong> {new Date(att.created_at).toLocaleTimeString()}</div>
+              <div><strong style={{color: 'var(--text-secondary)'}}>Saída:</strong> {status.exitText}</div>
+              <div><strong style={{color: 'var(--text-secondary)'}}>Tempo:</strong> {status.timeText} min</div>
+              <div>
+                <strong style={{color: 'var(--text-secondary)'}}>Status:</strong> 
+                <span style={{ fontWeight: 'bold', marginLeft: '4px', color: status.text === 'Apto' ? '#248a3d' : '#d93025' }}>{status.text}</span>
+              </div>
             </div>
           </div>
-        ))}
+        )})}
         {processedAttendances.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>Sem registros.</div>}
       </div>
     </div>

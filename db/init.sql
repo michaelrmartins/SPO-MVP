@@ -5,6 +5,7 @@ CREATE TABLE classes (
   professor_name VARCHAR(255) NOT NULL,
   class_name VARCHAR(255) NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+  min_permanence_minutes INTEGER DEFAULT 60,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   ended_at TIMESTAMP
 );
@@ -19,5 +20,6 @@ CREATE TABLE attendances (
   course_name VARCHAR(255),
   situator_id INTEGER,
   lyceum_validated BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  exit_at TIMESTAMP
 );

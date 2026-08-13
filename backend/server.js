@@ -93,7 +93,7 @@ app.get('/api/sessions', async (req, res) => {
 
 // Create or resume a session
 app.post('/api/sessions', async (req, res) => {
-  const { professor_name, class_name, id } = req.body;
+  const { professor_name, class_name, id, min_permanence_minutes } = req.body;
   try {
     if (id) {
       // Resume
@@ -102,8 +102,8 @@ app.post('/api/sessions', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
     // Check if active exists, else create new
-    const query = 'INSERT INTO classes (professor_name, class_name) VALUES ($1, $2) RETURNING *';
-    const result = await pool.query(query, [professor_name, class_name]);
+    const query = 'INSERT INTO classes (professor_name, class_name, min_permanence_minutes) VALUES ($1, $2, $3) RETURNING *';
+    const result = await pool.query(query, [professor_name, class_name, min_permanence_minutes || 60]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -137,6 +137,22 @@ app.delete('/api/sessions/:id', async (req, res) => {
     const result = await pool.query('DELETE FROM classes WHERE id = $1 RETURNING *', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update class minimum permanence
+app.patch('/api/sessions/:id/min-permanence', async (req, res) => {
+  const { min_permanence_minutes } = req.body;
+  if (min_permanence_minutes === undefined) return res.status(400).json({ error: 'Missing min_permanence_minutes' });
+  try {
+    const result = await pool.query(
+      'UPDATE classes SET min_permanence_minutes = $1 WHERE id = $2 RETURNING *',
+      [min_permanence_minutes, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -249,14 +265,26 @@ app.post('/api/attendance', async (req, res) => {
       return res.status(404).json({ error: 'Matrícula não encontrada no Lyceum. Impossível validar entrada.' });
     }
     // Verificar se a presença já foi registrada nesta aula
-    const checkQuery = `SELECT id FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;
+    const checkQuery = `SELECT id, exit_at FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;
     const checkResult = await pool.query(checkQuery, [classId, documentToSearch]);
 
     if (checkResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Opa! Esta pessoa já registrou presença nesta aula.' });
+      const existing = checkResult.rows[0];
+      if (existing.exit_at) {
+        return res.status(409).json({ error: 'Opa! Esta pessoa já registrou entrada e saída nesta aula.' });
+      } else {
+        // Registrar Saída
+        const updateQuery = `UPDATE attendances SET exit_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
+        const updatedResult = await pool.query(updateQuery, [existing.id]);
+        return res.status(200).json({
+          message: 'Saída registrada.',
+          attendance: updatedResult.rows[0],
+          is_exit: true
+        });
+      }
     }
 
-    // Inserir banco de dados
+    // Inserir banco de dados (Entrada)
     const insertQuery = `
       INSERT INTO attendances 
       (class_id, input_type, student_document, student_name, course_name, situator_id, lyceum_validated, student_photo) 
@@ -269,8 +297,9 @@ app.post('/api/attendance', async (req, res) => {
     const result = await pool.query(insertQuery, values);
 
     res.status(201).json({
-      message: 'Presença registrada.',
-      attendance: result.rows[0]
+      message: 'Entrada registrada.',
+      attendance: result.rows[0],
+      is_exit: false
     });
 
   } catch (error) {
@@ -278,6 +307,18 @@ app.post('/api/attendance', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Backend rodando na porta ${port}`);
+const autoMigrate = async () => {
+  try {
+    await pool.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS min_permanence_minutes INTEGER DEFAULT 60;`);
+    await pool.query(`ALTER TABLE attendances ADD COLUMN IF NOT EXISTS exit_at TIMESTAMP;`);
+    console.log("Auto-migration successful.");
+  } catch (err) {
+    console.error("Auto-migration failed:", err.message);
+  }
+};
+
+autoMigrate().then(() => {
+  app.listen(port, () => {
+    console.log(`Backend rodando na porta ${port}`);
+  });
 });
