@@ -549,7 +549,14 @@ function Collection({ activeSession, setActiveSession }) {
       <div className="widescreen-layout">
         <div>
       {currentStudent ? (
-        <div className="hero-display">
+        <div className="hero-display" style={{ 
+          backgroundColor: currentStudent.exit_at ? '#ff9f0a' : '#30d158', 
+          color: '#fff', 
+          justifyContent: 'center', 
+          textAlign: 'center',
+          minHeight: '350px'
+        }}>
+          {/* FOTO DESABILITADA TEMPORARIAMENTE PARA PERFORMANCE
           <div className="hero-photo-placeholder">
             {currentStudent.student_photo ? (
               <img src={`data:image/jpeg;base64,${currentStudent.student_photo}`} alt="Foto do Aluno" className="hero-photo" />
@@ -557,19 +564,22 @@ function Collection({ activeSession, setActiveSession }) {
               <UserCheck size={48} color="var(--text-secondary)" />
             )}
           </div>
-          <div className="hero-details">
-            <div className={`badge ${currentStudent.exit_at ? 'badge-warning' : 'badge-success'}`} style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
+          */}
+          <div className="hero-details" style={{ width: '100%', alignItems: 'center' }}>
+            <div className="badge" style={{ display: 'inline-block', marginBottom: '1rem', backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff', fontSize: '1.2rem', padding: '0.5rem 1rem', border: 'none' }}>
               {currentStudent.exit_at ? 'Saída Registrada' : 'Entrada Registrada'}
             </div>
-            <div className="hero-name">{shortName(currentStudent.student_name)}</div>
-            {currentStudent.course_name && <div className="hero-course">{currentStudent.course_name}</div>}
+            <div className="hero-name" style={{ fontSize: '3.5rem', fontWeight: '800', lineHeight: '1.1', color: '#fff' }}>
+              {shortName(currentStudent.student_name)}
+            </div>
+            {currentStudent.course_name && <div className="hero-course" style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.5rem', marginTop: '1rem' }}>{currentStudent.course_name}</div>}
             
-            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-              <span className="badge badge-neutral">via {currentStudent.input_type}</span>
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              <span className="badge" style={{ backgroundColor: 'rgba(0,0,0,0.2)', color: '#fff', border: 'none' }}>via {currentStudent.input_type}</span>
               {currentStudent.lyceum_validated ? (
-                <span className="badge badge-success">Validado Lyceum</span>
+                <span className="badge" style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: currentStudent.exit_at ? '#ff9f0a' : '#30d158', border: 'none' }}>Validado Lyceum</span>
               ) : (
-                <span className="badge badge-warning">Fallback Situator (Não no Lyceum)</span>
+                <span className="badge" style={{ backgroundColor: 'rgba(0,0,0,0.4)', color: '#fff', border: 'none' }}>Fallback Situator</span>
               )}
             </div>
           </div>

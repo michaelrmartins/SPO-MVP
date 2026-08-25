@@ -12,7 +12,7 @@ app.use(express.json());
 const port = process.env.PORT || 3000;
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || 'presence-db',
   port: process.env.DB_PORT || 5432,
   user: process.env.DB_USER || 'presence_user',
   password: process.env.DB_PASS || 'presence_password',
@@ -257,7 +257,8 @@ app.post('/api/attendance', async (req, res) => {
       course_name = `${nCurso}${nSerie}`.trim() || null;
 
       // Passo 4: Foto
-      if (lyceumData.data.pessoa) {
+      const ENABLE_PHOTO_FETCH = false; // Desabilitado temporariamente para otimizar desempenho
+      if (ENABLE_PHOTO_FETCH && lyceumData.data.pessoa) {
         base64Photo = await getLyceumPhoto(lyceumData.data.pessoa);
       }
     } else if (input_type === 'MANUAL' || input_type === 'FACIAL') {
@@ -265,11 +266,21 @@ app.post('/api/attendance', async (req, res) => {
       return res.status(404).json({ error: 'Matrícula não encontrada no Lyceum. Impossível validar entrada.' });
     }
     // Verificar se a presença já foi registrada nesta aula
-    const checkQuery = `SELECT id, exit_at FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;
+    const checkQuery = `SELECT id, created_at, exit_at FROM attendances WHERE class_id = $1 AND student_document = $2 LIMIT 1`;
     const checkResult = await pool.query(checkQuery, [classId, documentToSearch]);
 
     if (checkResult.rows.length > 0) {
       const existing = checkResult.rows[0];
+      
+      const now = new Date();
+      const createdAt = new Date(existing.created_at);
+      const diffMs = now - createdAt;
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 5) {
+        return res.status(409).json({ error: 'Matrícula já inserida recentemente. Aguarde 5 minutos para registrar a saída.' });
+      }
+
       if (existing.exit_at) {
         return res.status(409).json({ error: 'Opa! Esta pessoa já registrou entrada e saída nesta aula.' });
       } else {
